@@ -22,10 +22,10 @@ namespace Hooks
 
 	void Install()
 	{
-		REL::Relocation<std::uintptr_t> target_0{ RELOCATION_ID(36356, 37347), OFFSET(0x15A, 0x293) }; // Actor::Process (can't just hook KillImpl because aliases unregister on death or smth)
+		REL::Relocation<std::uintptr_t> target_0{ RELOCATION_ID(36356, 37347), OFFSET(0x15A, 0x293) };  // Actor::Process (can't just hook KillImpl because aliases unregister on death or smth)
 		stl::write_thunk_call<CalculateEssentialProtected<0>>(target_0.address());
-		
-		REL::Relocation<std::uintptr_t> target_1{ RELOCATION_ID(36872, 37896), OFFSET(0xA1, 0xA9) }; // Actor::KillImpl
+
+		REL::Relocation<std::uintptr_t> target_1{ RELOCATION_ID(36872, 37896), OFFSET(0xA1, 0xA9) };  // Actor::KillImpl
 		stl::write_thunk_call<CalculateEssentialProtected<1>>(target_1.address());
 	}
 }

@@ -51,7 +51,7 @@ void Manager::DisableEssentialStatus(RE::Actor* a_actor, bool a_essential)
 	if (state == NPC_STATE::kDisabled) {
 		return;
 	}
-	
+
 	if (IsExcluded(a_actor)) {
 		return;
 	}
