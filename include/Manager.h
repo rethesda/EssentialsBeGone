@@ -17,13 +17,15 @@ public:
 	void Register();
 	void RequestAPI();
 	void LoadSettings();
-	void DisableEssentialStatus(RE::Actor* a_actor, RE::TESNPC* a_npc);
+	void BuildExclusionList();
+	void DisableEssentialStatus(RE::Actor* a_actor, bool a_essential);
 
 private:
-	void        DisableEssentialStatusActor(NPC_STATE a_state, RE::Actor* a_actor) const;
-	void        DisableEssentialStatusNPC(NPC_STATE a_state, RE::TESNPC* a_npc) const;
-	std::string GetActorName(const RE::TESObjectREFRPtr& a_actor) const;
-	void        ShowMessage(bool a_showMessage, const std::string& a_message, const std::string& a_notification, const RE::TESObjectREFRPtr& a_actor) const;
+	static RE::TESNPC*                         GetActorBase(RE::Actor* a_actor);
+	bool                                       IsExcluded(RE::Actor* a_actor) const;
+	static std::optional<RE::QUEST_DATA::Type> GetQuestType(RE::Actor* a_actor, bool a_essential);
+	std::string                                GetActorName(const RE::TESObjectREFRPtr& a_actor) const;
+	void                                       ShowMessage(bool a_showMessage, const std::string& a_message, const std::string& a_notification, const RE::TESObjectREFRPtr& a_actor) const;
 
 	RE::BSEventNotifyControl ProcessEvent(const RE::TESDeathEvent* a_event, RE::BSTEventSource<RE::TESDeathEvent>* a_eventSource) override;
 
@@ -60,5 +62,6 @@ private:
 	REX::TIniSetting<std::string> notificationSideQuest{ "Messages", "sNotificationSideQuest",
 		"Your actions have caused a shift throughout the weave of fate..." };
 
-	std::unordered_map<RE::FormID, RE::QUEST_DATA::Type> questNPCs;
+	Set<RE::FormID>                                 excludedNPCs;
+	ConcurrentMap<RE::FormID, RE::QUEST_DATA::Type> questNPCs;
 };

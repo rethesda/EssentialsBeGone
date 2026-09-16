@@ -1,10 +1,11 @@
 {
   "name": "essentialsbegone",
-  "version-string": "1.0.0",
+  "version-string": "2.0.0",
   "description": "",
   "homepage": "",
   "license": "GPL-3.0-or-later",
   "dependencies": [
+    "boost-unordered",
     "clib-util",
     {
       "name": "commonlib-shared",

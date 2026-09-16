@@ -5,6 +5,8 @@ void Manager::Register()
 	if (auto scriptEventSource = RE::ScriptEventSourceHolder::GetSingleton()) {
 		scriptEventSource->AddEventSink(this);
 	}
+
+	BuildExclusionList();
 }
 
 void Manager::RequestAPI()
@@ -26,111 +28,104 @@ void Manager::LoadSettings()
 	store->Save();
 }
 
-void Manager::DisableEssentialStatus(RE::Actor* a_actor, RE::TESNPC* a_npc)
+void Manager::BuildExclusionList()
 {
-	if (!a_actor || !a_npc) {
-		return;
-	}
-
 	const auto& npcExclusionsA = stl::get_setting_ref(npcExclusions);
-
-	if (std::ranges::find(npcExclusionsA, editorID::get_editorID(a_npc)) != npcExclusionsA.end()) {
+	if (npcExclusionsA.empty()) {
+		REX::INFO("No excluded NPCs found");
 		return;
 	}
 
-	bool essential = a_actor->IsEssential();
-	bool playerTeammate = a_actor->IsPlayerTeammate();
-
-	if (essential || a_actor->IsProtected()) {
-		if (playerTeammate) {
-			DisableEssentialStatusActor(GetFollowerNPCState(), a_actor);
-		} else {
-			DisableEssentialStatusActor(GetGeneralNPCState(), a_actor);
+	for (const auto& npcEDID : npcExclusionsA) {
+		if (auto npc = RE::TESForm::LookupByEditorID<RE::TESNPC>(npcEDID)) {
+			excludedNPCs.insert(npc->GetFormID());
 		}
 	}
 
-	bool baseEssential = a_npc->IsEssential();
+	REX::INFO("Resolved {}/{} excluded NPCs", excludedNPCs.size(), npcExclusionsA.size());
+}
 
-	if (baseEssential || a_npc->IsProtected()) {
-		if (playerTeammate) {
-			DisableEssentialStatusNPC(GetFollowerNPCState(), a_npc);
-		} else {
-			DisableEssentialStatusNPC(GetGeneralNPCState(), a_npc);
-		}
+void Manager::DisableEssentialStatus(RE::Actor* a_actor, bool a_essential)
+{
+	auto state = a_actor->IsPlayerTeammate() ? GetFollowerNPCState() : GetGeneralNPCState();
+	if (state == NPC_STATE::kDisabled) {
+		return;
+	}
+	
+	if (IsExcluded(a_actor)) {
+		return;
 	}
 
-	if (auto xAliases = a_actor->extraList.GetByType<RE::ExtraAliasInstanceArray>()) {
-		RE::BSReadLockGuard locker(xAliases->lock);
-		for (auto& aliasData : xAliases->aliases) {
-			if (aliasData) {
-				auto quest = aliasData->quest;
-				auto alias = const_cast<RE::BGSBaseAlias*>(aliasData->alias);
-				if (quest && alias && quest->GetType() != RE::QUEST_DATA::Type::kNone && (alias->IsEssential() || essential || baseEssential)) {
-					alias->SetEssential(false);
-					alias->SetProtected(true);
+	if (const auto questType = GetQuestType(a_actor, a_essential)) {
+		if (state == NPC_STATE::kVunerable) {
+			switch (*questType) {
+			case RE::QUEST_DATA::Type::kMiscellaneous:
+			case RE::QUEST_DATA::Type::kSideQuest:
+				state = GetSideQuestNPCState() == NPC_STATE::kVunerable ? NPC_STATE::kVunerable : NPC_STATE::kProtected;
+				break;
+			default:
+				state = NPC_STATE::kProtected;
+				break;
+			}
+		}
+		questNPCs.insert_or_assign(a_actor->GetFormID(), *questType);
+	} else {
+		questNPCs.erase(a_actor->GetFormID());
+	}
 
-					bool isVunerable = playerTeammate ? (GetFollowerNPCState() == NPC_STATE::kVunerable) : (GetGeneralNPCState() == NPC_STATE::kVunerable);
+	switch (state) {
+	case NPC_STATE::kProtected:
+		a_actor->boolFlags.reset(RE::Actor::BOOL_FLAGS::kEssential);
+		a_actor->boolFlags.set(RE::Actor::BOOL_FLAGS::kProtected);
+		break;
+	case NPC_STATE::kVunerable:
+		a_actor->boolFlags.reset(RE::Actor::BOOL_FLAGS::kEssential, RE::Actor::BOOL_FLAGS::kProtected);
+		break;
+	default:
+		break;
+	}
+}
 
-					if (isVunerable && GetSideQuestNPCState() == NPC_STATE::kVunerable) {
-						switch (quest->GetType()) {
-						case RE::QUEST_DATA::Type::kMiscellaneous:
-						case RE::QUEST_DATA::Type::kSideQuest:
-							alias->SetProtected(false);
-							break;
-						default:
-							break;
-						}
-					}
+RE::TESNPC* Manager::GetActorBase(RE::Actor* a_actor)
+{
+	if (const auto xLevCreature = a_actor->extraList.GetByType<RE::ExtraLeveledCreature>()) {
+		if (const auto original = xLevCreature->originalBase ? xLevCreature->originalBase->As<RE::TESNPC>() : nullptr) {
+			return original;
+		}
+	}
+	return a_actor->GetActorBase();
+}
 
-					questNPCs.insert({ a_actor->GetFormID(), quest->GetType() });
+bool Manager::IsExcluded(RE::Actor* a_actor) const
+{
+	if (excludedNPCs.empty()) {
+		return false;
+	}
+	if (auto actorbase = GetActorBase(a_actor); actorbase && excludedNPCs.contains(actorbase->GetFormID())) {
+		return true;
+	}
+	return false;
+}
+
+std::optional<RE::QUEST_DATA::Type> Manager::GetQuestType(RE::Actor* a_actor, bool a_essential)
+{
+	const auto xAliases = a_actor->extraList.GetByType<RE::ExtraAliasInstanceArray>();
+	if (!xAliases) {
+		return std::nullopt;
+	}
+
+	RE::BSReadLockGuard locker(xAliases->lock);
+	for (const auto& aliasData : xAliases->aliases) {
+		if (aliasData) {
+			if (const auto quest = aliasData->quest; quest && quest->GetType() != RE::QUEST_DATA::Type::kNone) {
+				if (a_essential || (aliasData->alias && aliasData->alias->flags.any(RE::BGSBaseAlias::FLAGS::kEssential))) {
+					return quest->GetType();
 				}
 			}
 		}
 	}
-}
 
-void Manager::DisableEssentialStatusActor(NPC_STATE a_state, RE::Actor* a_actor) const
-{
-	switch (a_state) {
-	case NPC_STATE::kDisabled:
-		break;
-	case NPC_STATE::kProtected:
-		{
-			a_actor->boolFlags.reset(RE::Actor::BOOL_FLAGS::kEssential);
-			a_actor->boolFlags.set(RE::Actor::BOOL_FLAGS::kProtected);
-		}
-		break;
-	case NPC_STATE::kVunerable:
-		{
-			a_actor->boolFlags.reset(RE::Actor::BOOL_FLAGS::kEssential);
-			a_actor->boolFlags.reset(RE::Actor::BOOL_FLAGS::kProtected);
-		}
-		break;
-	default:
-		std::unreachable();
-	}
-}
-
-void Manager::DisableEssentialStatusNPC(NPC_STATE a_state, RE::TESNPC* a_npc) const
-{
-	switch (a_state) {
-	case NPC_STATE::kDisabled:
-		break;
-	case NPC_STATE::kProtected:
-		{
-			a_npc->actorData.actorBaseFlags.set(RE::ACTOR_BASE_DATA::Flag::kProtected);
-			a_npc->actorData.actorBaseFlags.reset(RE::ACTOR_BASE_DATA::Flag::kEssential);
-		}
-		break;
-	case NPC_STATE::kVunerable:
-		{
-			a_npc->actorData.actorBaseFlags.reset(RE::ACTOR_BASE_DATA::Flag::kEssential);
-			a_npc->actorData.actorBaseFlags.reset(RE::ACTOR_BASE_DATA::Flag::kProtected);
-		}
-		break;
-	default:
-		std::unreachable();
-	}
+	return std::nullopt;
 }
 
 std::string Manager::GetActorName(const RE::TESObjectREFRPtr& a_actor) const
@@ -156,7 +151,7 @@ void Manager::ShowMessage(bool a_showMessage, const std::string& a_message, cons
 	};
 
 	if (a_showMessage) {
-		RE::DebugMessageBox(get_message(a_message, a_actor).c_str());
+		RE::MessageBoxMenu::Create(get_message(a_message, a_actor).c_str(), nullptr, 0, 4, 10, const_cast<const char*>(*"sOk"_gs));
 	} else {
 		RE::SendHUDMessage::ShowHUDMessage(get_message(a_notification, a_actor).c_str());
 	}
@@ -164,17 +159,17 @@ void Manager::ShowMessage(bool a_showMessage, const std::string& a_message, cons
 
 RE::BSEventNotifyControl Manager::ProcessEvent(const RE::TESDeathEvent* a_event, RE::BSTEventSource<RE::TESDeathEvent>*)
 {
-	if (!a_event || !a_event->actorDying) {
+	if (!a_event || !a_event->actorDying || a_event->actorDying->IsPlayerRef()) {
 		return RE::BSEventNotifyControl::kContinue;
 	}
 
 	const auto& actor = a_event->actorDying;
 
-	if (auto result = questNPCs.find(actor->GetFormID()); result != questNPCs.end()) {
-		if (!a_event->dead) {
+	questNPCs.erase_if(actor->GetFormID(), [this, actor, dead = a_event->dead](const auto& result) {
+		if (!dead) {
 			RE::PlaySound("AMBRumbleShakeGreybeardsSD");
 			if (enableCameraShake) {
-				switch (result->second) {
+				switch (result.second) {
 				case RE::QUEST_DATA::Type::kMiscellaneous:
 				case RE::QUEST_DATA::Type::kSideQuest:
 					RE::ShakeCamera(0.125f, actor->GetPosition(), 2.0f);
@@ -184,8 +179,9 @@ RE::BSEventNotifyControl Manager::ProcessEvent(const RE::TESDeathEvent* a_event,
 					break;
 				}
 			}
+			return false;
 		} else {
-			switch (result->second) {
+			switch (result.second) {
 			case RE::QUEST_DATA::Type::kMiscellaneous:
 			case RE::QUEST_DATA::Type::kSideQuest:
 				ShowMessage(enableMessageBoxSideQuest, GetMessageSideQuest(), GetNotificationSideQuest(), actor);
@@ -194,8 +190,9 @@ RE::BSEventNotifyControl Manager::ProcessEvent(const RE::TESDeathEvent* a_event,
 				ShowMessage(enableMessageBoxVIP, GetMessageVIP(), GetNotificationVIP(), actor);
 				break;
 			}
+			return true;
 		}
-	}
+	});
 
 	return RE::BSEventNotifyControl::kContinue;
 }

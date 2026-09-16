@@ -30,7 +30,7 @@ SKSE_PLUGIN_VERSION = []() {
 	v.PluginName("Essentials Be Gone");
 	v.AuthorName("powerofthree");
 	v.UsesAddressLibrary();
-	v.UsesNoStructs();
+	v.UsesUpdatedStructs();
 	v.CompatibleVersions({ SKSE::RUNTIME_SSE_LATEST });
 
 	if constexpr (SKSE::RUNTIME_SSE_LATEST < MIN_ADDRESS_LIBRARY_V5_RUNTIME) {
@@ -65,7 +65,9 @@ SKSE_PLUGIN_QUERY(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
 SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* a_skse)
 {
 	SKSE::Init(a_skse, { .log = true,
-						   .logName = Version::PROJECT.data() });
+						   .logName = Version::PROJECT.data(),
+						   .trampoline = true,
+						   .trampolineSize = 14 * 2 });
 
 	const auto runtimeVersion = a_skse->RuntimeVersion();
 

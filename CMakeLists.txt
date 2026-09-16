@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 set(NAME "po3_EssentialsBeGone" CACHE STRING "")
-set(VERSION 1.0.0 CACHE STRING "")
+set(VERSION 2.0.0 CACHE STRING "")
 set(AE_VERSION 1)
 set(VR_VERSION 1)
 
@@ -152,6 +152,8 @@ else ()
 	)
 endif()
 
+find_package(boost_unordered CONFIG REQUIRED)
+
 find_path(CLIB_UTIL_INCLUDE_DIRS "ClibUtil/utils.hpp")
 
 # ---- Add source files ----
@@ -211,6 +213,7 @@ target_link_libraries(
 	${PROJECT_NAME}
 	PRIVATE
 		${CommonLibName}::${CommonLibName}
+		Boost::unordered
 )
 
 target_precompile_headers(

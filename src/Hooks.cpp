@@ -4,28 +4,28 @@
 
 namespace Hooks
 {
-	struct Load3D
+	template <std::size_t N>
+	struct CalculateEssentialProtected
 	{
-		static RE::NiAVObject* thunk(RE::Character* a_this, bool a_backgroundLoading)
+		static void thunk(RE::Actor* a_actor)
 		{
-			auto node = func(a_this, a_backgroundLoading);
-			if (node) {
-				Manager::GetSingleton()->DisableEssentialStatus(a_this, a_this->GetActorBase());
+			func(a_actor);
+
+			if (!a_actor->IsPlayerRef()) {
+				if (bool essential = a_actor->boolFlags.any(RE::Actor::BOOL_FLAGS::kEssential); essential || a_actor->boolFlags.any(RE::Actor::BOOL_FLAGS::kProtected)) {
+					Manager::GetSingleton()->DisableEssentialStatus(a_actor, essential);
+				}
 			}
-			return node;
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
-		static constexpr std::size_t                   idx{ 0x6A };
-
-		static void Install()
-		{
-			stl::write_vfunc<RE::Character, Load3D>();
-			REX::INFO("Hooked Character::Load3D"sv);
-		}
 	};
 
 	void Install()
 	{
-		Load3D::Install();
+		REL::Relocation<std::uintptr_t> target_0{ RELOCATION_ID(36356, 37347), OFFSET(0x15A, 0x293) }; // Actor::Process (can't just hook KillImpl because aliases unregister on death or smth)
+		stl::write_thunk_call<CalculateEssentialProtected<0>>(target_0.address());
+		
+		REL::Relocation<std::uintptr_t> target_1{ RELOCATION_ID(36872, 37896), OFFSET(0xA1, 0xA9) }; // Actor::KillImpl
+		stl::write_thunk_call<CalculateEssentialProtected<1>>(target_1.address());
 	}
 }
