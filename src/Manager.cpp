@@ -11,34 +11,19 @@ void Manager::RequestAPI()
 {
 	_nnd = static_cast<NND_API::IVNND2*>(NND_API::RequestPluginAPI());
 	if (_nnd) {
-		logger::info("NND API requested successfully");
+		REX::INFO("NND API requested successfully");
 	} else {
-		logger::error("Failed to request NND API");
+		REX::ERROR("Failed to request NND API");
 	}
 }
 
 void Manager::LoadSettings()
 {
-	constexpr auto path = "Data/SKSE/Plugins/po3_EssentialsBeGone.ini";
+	const auto store = REX::FIniSettingStore::GetSingleton();
+	store->Init(path.data(), "");
 
-	CSimpleIniA ini;
-	ini.SetUnicode();
-
-	ini.LoadFile(path);
-
-	ini::get_value(ini, generalNPCState, "Settings", "iGeneralNPCState", ";Generic NPC state.\n;0 - Normal (no change), 1 - Protected (can only be killed by the player), 2 - Vunerable (can be killed by anyone).");
-	ini::get_value(ini, sideQuestNPCState, "Settings", "iSideQuestNPCState", ";Sidequest NPC state (important quest NPCs will always be protected).\n;0 - Normal, 1 - Protected, 2 - Vunerable.");
-	ini::get_value(ini, followerNPCState, "Settings", "iFollowerNPCState", ";Follower NPC state.\n;0 - Normal, 1 - Protected, 2 - Vunerable.");
-	ini::get_value(ini, enableMessageBoxVIP, "Settings", "bShowMessageboxVIP", ";Show a Morrowind style message box when important quest NPCs are killed. If false, a notification will display instead.");
-	ini::get_value(ini, enableMessageBoxSideQuest, "Settings", "bShowMessageboxSideQuest", ";Show a Morrowind style message box when side quest NPCs are killed. If false, a notification will display instead.");
-	ini::get_value(ini, enableCameraShake, "Settings", "bEnableCameraShake", ";Shake camera when important NPCs are killed.");
-	ini::get_value(ini, npcExclusions, "Settings", "sNPCExcludeList", ";List of NPCs to exclude (NPC1EditorID,NPC2EditorID).", ",");
-	ini::get_value(ini, messageVIP, "Messages", "sMessageboxVIP", ";Message that triggers for important NPCs.");
-	ini::get_value(ini, messageSideQuest, "Messages", "sMessageboxSideQuest", ";Message that triggers for side quest NPCs.");
-	ini::get_value(ini, notificationVIP, "Messages", "sNotificationVIP", ";Notification that triggers for important NPCs.");
-	ini::get_value(ini, notificationSideQuest, "Messages", "sNotificationSideQuest", ";Notification that triggers for side quest NPCs.");
-
-	(void)ini.SaveFile(path);
+	store->Load();
+	store->Save();
 }
 
 void Manager::DisableEssentialStatus(RE::Actor* a_actor, RE::TESNPC* a_npc)
@@ -47,7 +32,9 @@ void Manager::DisableEssentialStatus(RE::Actor* a_actor, RE::TESNPC* a_npc)
 		return;
 	}
 
-	if (std::find(npcExclusions.begin(), npcExclusions.end(), editorID::get_editorID(a_npc)) != npcExclusions.end()) {
+	const auto& npcExclusionsA = stl::get_setting_ref(npcExclusions);
+
+	if (std::ranges::find(npcExclusionsA, editorID::get_editorID(a_npc)) != npcExclusionsA.end()) {
 		return;
 	}
 
@@ -56,9 +43,9 @@ void Manager::DisableEssentialStatus(RE::Actor* a_actor, RE::TESNPC* a_npc)
 
 	if (essential || a_actor->IsProtected()) {
 		if (playerTeammate) {
-			DisableEssentialStatusActor(followerNPCState, a_actor);
+			DisableEssentialStatusActor(GetFollowerNPCState(), a_actor);
 		} else {
-			DisableEssentialStatusActor(generalNPCState, a_actor);
+			DisableEssentialStatusActor(GetGeneralNPCState(), a_actor);
 		}
 	}
 
@@ -66,14 +53,13 @@ void Manager::DisableEssentialStatus(RE::Actor* a_actor, RE::TESNPC* a_npc)
 
 	if (baseEssential || a_npc->IsProtected()) {
 		if (playerTeammate) {
-			DisableEssentialStatusNPC(followerNPCState, a_npc);
+			DisableEssentialStatusNPC(GetFollowerNPCState(), a_npc);
 		} else {
-			DisableEssentialStatusNPC(generalNPCState, a_npc);
+			DisableEssentialStatusNPC(GetGeneralNPCState(), a_npc);
 		}
 	}
 
-	auto xAliases = a_actor->extraList.GetByType<RE::ExtraAliasInstanceArray>();
-	if (xAliases) {
+	if (auto xAliases = a_actor->extraList.GetByType<RE::ExtraAliasInstanceArray>()) {
 		RE::BSReadLockGuard locker(xAliases->lock);
 		for (auto& aliasData : xAliases->aliases) {
 			if (aliasData) {
@@ -83,9 +69,9 @@ void Manager::DisableEssentialStatus(RE::Actor* a_actor, RE::TESNPC* a_npc)
 					alias->SetEssential(false);
 					alias->SetProtected(true);
 
-					bool isVunerable = playerTeammate ? (followerNPCState == NPC_STATE::kVunerable) : (generalNPCState == NPC_STATE::kVunerable);
+					bool isVunerable = playerTeammate ? (GetFollowerNPCState() == NPC_STATE::kVunerable) : (GetGeneralNPCState() == NPC_STATE::kVunerable);
 
-					if (isVunerable && sideQuestNPCState == NPC_STATE::kVunerable) {
+					if (isVunerable && GetSideQuestNPCState() == NPC_STATE::kVunerable) {
 						switch (quest->GetType()) {
 						case RE::QUEST_DATA::Type::kMiscellaneous:
 						case RE::QUEST_DATA::Type::kSideQuest:
@@ -165,7 +151,7 @@ void Manager::ShowMessage(bool a_showMessage, const std::string& a_message, cons
 {
 	const auto get_message = [this](const std::string& a_template, const RE::TESObjectREFRPtr& actor) {
 		std::string result = a_template;
-		string::replace_all(result, "[npc]", GetActorName(actor));
+		REX::STR::REPLACE_ALL(result, "[npc]", GetActorName(actor));
 		return result;
 	};
 
@@ -202,10 +188,10 @@ RE::BSEventNotifyControl Manager::ProcessEvent(const RE::TESDeathEvent* a_event,
 			switch (result->second) {
 			case RE::QUEST_DATA::Type::kMiscellaneous:
 			case RE::QUEST_DATA::Type::kSideQuest:
-				ShowMessage(enableMessageBoxSideQuest, messageSideQuest, notificationSideQuest, actor);
+				ShowMessage(enableMessageBoxSideQuest, GetMessageSideQuest(), GetNotificationSideQuest(), actor);
 				break;
 			default:
-				ShowMessage(enableMessageBoxVIP, messageVIP, notificationVIP, actor);
+				ShowMessage(enableMessageBoxVIP, GetMessageVIP(), GetNotificationVIP(), actor);
 				break;
 			}
 		}

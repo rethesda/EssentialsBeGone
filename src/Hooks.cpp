@@ -20,7 +20,7 @@ namespace Hooks
 		static void Install()
 		{
 			stl::write_vfunc<RE::Character, Load3D>();
-			logger::info("Hooked Character::Load3D"sv);
+			REX::INFO("Hooked Character::Load3D"sv);
 		}
 	};
 
