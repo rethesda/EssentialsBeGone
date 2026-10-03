@@ -166,29 +166,35 @@ RE::BSEventNotifyControl Manager::ProcessEvent(const RE::TESDeathEvent* a_event,
 	const auto& actor = a_event->actorDying;
 
 	questNPCs.erase_if(actor->GetFormID(), [this, actor, dead = a_event->dead](const auto& result) {
+		const auto is3DLoaded = actor->Is3DLoaded();
+		
 		if (!dead) {
-			RE::PlaySound("AMBRumbleShakeGreybeardsSD");
-			if (enableCameraShake) {
-				switch (result.second) {
-				case RE::QUEST_DATA::Type::kMiscellaneous:
-				case RE::QUEST_DATA::Type::kSideQuest:
-					RE::ShakeCamera(0.125f, actor->GetPosition(), 2.0f);
-					break;
-				default:
-					RE::ShakeCamera(0.25f, actor->GetPosition(), 2.0f);
-					break;
+			if (is3DLoaded) {
+				RE::PlaySound("AMBRumbleShakeGreybeardsSD");
+				if (enableCameraShake) {
+					switch (result.second) {
+					case RE::QUEST_DATA::Type::kMiscellaneous:
+					case RE::QUEST_DATA::Type::kSideQuest:
+						RE::ShakeCamera(0.125f, actor->GetPosition(), 2.0f);
+						break;
+					default:
+						RE::ShakeCamera(0.25f, actor->GetPosition(), 2.0f);
+						break;
+					}
 				}
 			}
 			return false;
 		} else {
-			switch (result.second) {
-			case RE::QUEST_DATA::Type::kMiscellaneous:
-			case RE::QUEST_DATA::Type::kSideQuest:
-				ShowMessage(enableMessageBoxSideQuest, GetMessageSideQuest(), GetNotificationSideQuest(), actor);
-				break;
-			default:
-				ShowMessage(enableMessageBoxVIP, GetMessageVIP(), GetNotificationVIP(), actor);
-				break;
+			if (is3DLoaded) {
+				switch (result.second) {
+				case RE::QUEST_DATA::Type::kMiscellaneous:
+				case RE::QUEST_DATA::Type::kSideQuest:
+					ShowMessage(enableMessageBoxSideQuest, GetMessageSideQuest(), GetNotificationSideQuest(), actor);
+					break;
+				default:
+					ShowMessage(enableMessageBoxVIP, GetMessageVIP(), GetNotificationVIP(), actor);
+					break;
+				}
 			}
 			return true;
 		}

@@ -11,7 +11,7 @@ namespace Hooks
 		{
 			func(a_actor);
 
-			if (!a_actor->IsPlayerRef()) {
+			if (a_actor && !a_actor->IsPlayerRef()) {
 				if (bool essential = a_actor->boolFlags.any(RE::Actor::BOOL_FLAGS::kEssential); essential || a_actor->boolFlags.any(RE::Actor::BOOL_FLAGS::kProtected)) {
 					Manager::GetSingleton()->DisableEssentialStatus(a_actor, essential);
 				}
