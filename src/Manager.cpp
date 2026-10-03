@@ -167,7 +167,7 @@ RE::BSEventNotifyControl Manager::ProcessEvent(const RE::TESDeathEvent* a_event,
 
 	questNPCs.erase_if(actor->GetFormID(), [this, actor, dead = a_event->dead](const auto& result) {
 		const auto is3DLoaded = actor->Is3DLoaded();
-		
+
 		if (!dead) {
 			if (is3DLoaded) {
 				RE::PlaySound("AMBRumbleShakeGreybeardsSD");
